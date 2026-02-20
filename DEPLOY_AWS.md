@@ -1,219 +1,320 @@
-# Deploy to AWS — Run 24/7 for a Week
+# Deploy to AWS — Complete Beginner Guide
 
-**Cost: ~$1.75/week** (t3.micro) or **free** (t2.micro, free tier)
-
----
-
-## Step 1: Launch an EC2 Instance
-
-1. Go to [AWS Console → EC2](https://console.aws.amazon.com/ec2)
-2. Click **Launch Instance**
-3. Configure:
-
-| Setting | Value |
-|---------|-------|
-| **Name** | `polymarket-monitor` |
-| **AMI** | Ubuntu Server 24.04 LTS (free tier eligible) |
-| **Instance type** | `t3.micro` ($1.75/week) or `t2.micro` (free tier) |
-| **Key pair** | Create new → download `.pem` file → save it safely |
-| **Security Group** | Create new with these rules ↓ |
-
-### Security Group Rules
-
-| Type | Port | Source | Purpose |
-|------|------|--------|---------|
-| SSH | 22 | My IP | Terminal access |
-| Custom TCP | 8501 | 0.0.0.0/0 | Dashboard (phone/laptop) |
-
-4. Click **Launch Instance**
-5. Note the **Public IPv4** address (e.g., `3.14.159.26`)
+**What you'll get:** Your trading bot running 24/7 on AWS, viewable from your phone/laptop, with Telegram alerts.  
+**Cost:** FREE (AWS Free Tier — 750 hours/month for 12 months)  
+**Time:** ~15 minutes
 
 ---
 
-## Step 2: Connect via SSH
+## Part 1: Create an AWS Account (Skip if you already have one)
 
-```bash
-# On your laptop (PowerShell or terminal)
-# First, fix key permissions (one-time)
-icacls "C:\path\to\your-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
+1. Go to [https://aws.amazon.com](https://aws.amazon.com)
+2. Click **"Create an AWS Account"** (top right)
+3. Enter your email, password, and account name
+4. Enter your credit card (you will NOT be charged — free tier)
+5. Choose **"Basic support — Free"**
+6. Done! You now have an AWS account
 
-# Connect
-ssh -i "C:\path\to\your-key.pem" ubuntu@<YOUR_EC2_PUBLIC_IP>
+---
+
+## Part 2: Launch Your Server
+
+### Step 1: Open EC2 Dashboard
+
+1. Log into [https://console.aws.amazon.com](https://console.aws.amazon.com)
+2. In the search bar at the top, type **EC2** and click it
+3. Click the big orange button: **"Launch instance"**
+
+### Step 2: Name Your Server
+
+- **Name:** Type `polymarket-monitor`
+
+### Step 3: Choose Operating System
+
+- Under **"Application and OS Images"**, you'll see **Ubuntu** as an option
+- Click **Ubuntu**
+- Make sure it says **"Free tier eligible"** underneath
+- Leave everything else as default
+
+### Step 4: Choose Server Size
+
+- Under **"Instance type"**, select **t2.micro**
+- It should say **"Free tier eligible"** next to it
+- This gives you 1 CPU + 1 GB RAM — more than enough
+
+### Step 5: Create a Key Pair (This is Your Password to SSH In)
+
+1. Under **"Key pair"**, click **"Create new key pair"**
+2. **Key pair name:** Type `polymarket-key`
+3. **Key pair type:** Leave as `RSA`
+4. **Private key file format:** Choose `.pem`
+5. Click **"Create key pair"**
+6. ⚠️ **A file called `polymarket-key.pem` will download. SAVE THIS FILE. You need it to connect later.**
+7. Move it somewhere safe, like `C:\Users\visha\Desktop\polymarket-key.pem`
+
+### Step 6: Configure Network (Allow Dashboard + SSH Access)
+
+1. Under **"Network settings"**, click **"Edit"** (on the right)
+2. You'll see one rule for SSH (port 22) — leave it
+3. Click **"Add security group rule"**
+4. Fill in:
+   - **Type:** Custom TCP
+   - **Port range:** `8501`
+   - **Source type:** Anywhere (`0.0.0.0/0`)
+   - **Description:** `Dashboard`
+
+### Step 7: Storage
+
+- Change the storage to **20 GB** (free tier allows up to 30 GB)
+- This gives enough space for Python packages and trade data
+
+### Step 8: Launch!
+
+1. Click the orange **"Launch instance"** button at the bottom
+2. You'll see a green success message
+3. Click **"View all instances"**
+4. Wait ~30 seconds for the **"Instance state"** to change to **"Running"**
+5. Click on your instance → copy the **"Public IPv4 address"**
+   - It will look like: `3.14.159.26` — **save this, you'll need it**
+
+---
+
+## Part 3: Connect to Your Server
+
+### On Windows (PowerShell)
+
+1. Open **PowerShell** (search "PowerShell" in Start menu)
+2. Run these commands one by one:
+
+```powershell
+# Go to where your key file is (change path if needed)
+cd C:\Users\visha\Desktop
+
+# Connect to your server (replace <YOUR_IP> with the IP you copied)
+ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>
 ```
 
+3. It will ask: **"Are you sure you want to continue connecting?"** → Type `yes` and press Enter
+4. You're now inside your AWS server! You'll see something like:
+```
+ubuntu@ip-172-31-xx-xx:~$
+```
+
+> **If you get a "permissions" error**, run this first:
+> ```powershell
+> icacls "polymarket-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
+> ```
+> Then try the ssh command again.
+
 ---
 
-## Step 3: Install Dependencies on EC2
+## Part 4: Install Everything on the Server
 
+Copy and paste these commands **one block at a time** into your SSH terminal:
+
+### Block 1: Update the server
 ```bash
-# Update system
 sudo apt update && sudo apt upgrade -y
+```
+⏱ Wait ~1 minute. Press `Y` if it asks anything.
 
-# Install Python + pip + screen
+### Block 2: Install Python and tools
+```bash
 sudo apt install -y python3 python3-pip python3-venv screen git
+```
+⏱ Wait ~30 seconds.
 
-# Clone your repo
+### Block 3: Download your code from GitHub
+```bash
 git clone https://github.com/vishalyl/crystal-perigee.git
 cd crystal-perigee
+```
 
-# Create virtual environment
+### Block 4: Set up Python environment
+```bash
 python3 -m venv venv
 source venv/bin/activate
-
-# Install Python packages
 pip install -r requirements.txt
 ```
+⏱ Wait ~1 minute for packages to install.
 
 ---
 
-## Step 4: Start the Monitor (Runs Forever)
+## Part 5: Start the Trading Bot
 
-We use `screen` so processes survive after you disconnect SSH.
+### Start the Monitor
 
 ```bash
-# Start a screen session called "monitor"
+# Create a "screen" session (keeps running even after you disconnect)
 screen -S monitor
 
-# Inside screen: start the monitor
-cd ~/crystal-perigee
-source venv/bin/activate
+# You're now inside a virtual terminal. Start the bot:
 PYTHONUNBUFFERED=1 python3 crypto_monitor.py
-
-# DETACH from screen (process keeps running):
-# Press: Ctrl+A, then D
 ```
 
----
+You should see:
+```
+Polymarket Multi-Slot Monitor v4
+  [STARTUP] Clearing old slots...
+  [FETCHER] ...
+  ✓ Fresh queue built: 5 upcoming slots
+  [TICK] BTC NO: $0.505 ...
+```
 
-## Step 5: Start the Dashboard (Accessible from Phone/Laptop)
+**Now detach (leave it running in background):**
+- Press `Ctrl+A`, then press `D`
+- You'll see: `[detached from ...]`
+
+### Start the Dashboard
 
 ```bash
-# Start another screen session called "dashboard"
+# Create another screen session for the dashboard
 screen -S dashboard
 
-# Inside screen: start streamlit
+# Start Streamlit (note the --server.address 0.0.0.0 — this makes it accessible from outside)
 cd ~/crystal-perigee
 source venv/bin/activate
 streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
-
-# DETACH from screen:
-# Press: Ctrl+A, then D
 ```
+
+You should see:
+```
+You can now view your Streamlit app in your browser.
+  Network URL: http://172.31.xx.xx:8501
+```
+
+**Detach again:**
+- Press `Ctrl+A`, then press `D`
 
 ---
 
-## Step 6: Access Dashboard
+## Part 6: View Your Dashboard! 🎉
 
-Open in any browser (laptop or phone):
+Open any browser on your **laptop or phone** and go to:
 
 ```
-http://<YOUR_EC2_PUBLIC_IP>:8501
+http://<YOUR_IP>:8501
 ```
 
+Replace `<YOUR_IP>` with the Public IP you saved earlier.  
 Example: `http://3.14.159.26:8501`
 
-> **Bookmark this on your phone** for quick access!
+> 💡 **Pro tip:** Bookmark this URL on your phone's home screen for quick access!
 
 ---
 
-## Step 7: Telegram Setup
+## Part 7: Set Up Telegram Alerts
 
-Your Telegram bot is already configured. Just:
 1. Open Telegram on your phone
-2. Send `/start` to your bot
-3. The monitor will auto-detect your chat_id
-4. You'll get alerts for every trade open, limit hit, and slot summary
+2. Search for your bot (the one you created with BotFather)
+3. Send `/start` to the bot
+4. Within a few seconds, you'll see `[TG] Chat ID set: ...` in the monitor logs
+5. From now on, you'll get alerts for:
+   - 📈 Trade opened
+   - ✅ Limit hit (profit!)
+   - 🔴 Slot expired (loss)
+   - 📊 Hourly summaries
 
 ---
 
-## Daily Operations
+## Everyday Usage
 
-### Check on the monitor (SSH in)
+### I want to check on my bot
+
+**Option A: Just open the dashboard**
+- Go to `http://<YOUR_IP>:8501` on your phone
+- Everything is there: trades, equity, live prices
+
+**Option B: Check the terminal logs**
 ```bash
-ssh -i "your-key.pem" ubuntu@<YOUR_EC2_PUBLIC_IP>
+# SSH in
+ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>
 
-# Reattach to monitor screen
+# See the monitor output
 screen -r monitor
 
-# See live output, then detach again: Ctrl+A, D
+# When done looking, detach: Ctrl+A, then D
+
+# Disconnect from SSH
+exit
 ```
 
-### Check on the dashboard
-```bash
-screen -r dashboard
-# Detach: Ctrl+A, D
-```
+### Something broke — restart the bot
 
-### Restart everything (full wipe)
 ```bash
+# SSH in
+ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>
+
+# Go to the monitor screen
 screen -r monitor
-# Press Ctrl+C to stop
 
-# Wipe and restart
+# Stop the bot: press Ctrl+C
+
+# Restart it
+PYTHONUNBUFFERED=1 python3 crypto_monitor.py
+
+# Detach: Ctrl+A, then D
+exit
+```
+
+### Full wipe — delete everything and start fresh
+
+```bash
+ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>
+screen -r monitor
+
+# Stop the bot: Ctrl+C
+
+# Delete all data
 rm -f trades.db trades.db-wal trades.db-shm upcoming_markets.txt
+
+# Restart clean
 PYTHONUNBUFFERED=1 python3 crypto_monitor.py
 
-# Detach: Ctrl+A, D
+# Detach: Ctrl+A, then D
+exit
 ```
 
-### Restart after error (keep trades)
+### Pull latest code updates (after you push changes from your laptop)
+
 ```bash
+ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>
 screen -r monitor
-# Press Ctrl+C
+# Ctrl+C to stop
 
-PYTHONUNBUFFERED=1 python3 crypto_monitor.py
-# Detach: Ctrl+A, D
-```
-
-### Pull latest code changes
-```bash
 cd ~/crystal-perigee
 git pull origin master
-# Then restart monitor (see above)
+PYTHONUNBUFFERED=1 python3 crypto_monitor.py
+
+# Detach: Ctrl+A, then D
+exit
 ```
 
 ---
 
-## List all running screen sessions
-```bash
-screen -ls
-```
+## When You're Done (After 1 Week)
 
-Output:
-```
-There are screens on:
-    12345.monitor    (Detached)
-    12346.dashboard  (Detached)
-```
+> ⚠️ **IMPORTANT: Don't forget this step or you'll be charged!**
 
----
-
-## Stop Everything & Terminate Instance
-
-When the week is over:
-
-```bash
-# Kill all screens
-screen -X -S monitor quit
-screen -X -S dashboard quit
-```
-
-Then go to **AWS Console → EC2 → Instances → Select → Instance State → Terminate**.
-
-> ⚠️ **Don't forget to terminate!** Even a t3.micro costs ~$7.50/month if left running.
+1. Go to [AWS Console → EC2 → Instances](https://console.aws.amazon.com/ec2)
+2. Check the box next to `polymarket-monitor`
+3. Click **"Instance state"** dropdown (top right)
+4. Click **"Terminate instance"**
+5. Confirm by clicking **"Terminate"**
+6. Done! No more charges.
 
 ---
 
-## Quick Reference
+## Cheat Sheet
 
-| What | Command |
-|------|---------|
-| SSH in | `ssh -i key.pem ubuntu@<IP>` |
-| See monitor | `screen -r monitor` |
-| See dashboard | `screen -r dashboard` |
-| Detach screen | `Ctrl+A`, then `D` |
-| Dashboard URL | `http://<IP>:8501` |
-| Full wipe | `rm -f trades.db* upcoming_markets.txt` |
-| Restart monitor | `PYTHONUNBUFFERED=1 python3 crypto_monitor.py` |
-| Pull updates | `git pull origin master` |
-| Kill everything | `screen -X -S monitor quit` |
+| I want to... | Do this |
+|---|---|
+| See my dashboard | Open `http://<YOUR_IP>:8501` in browser |
+| SSH into server | `ssh -i "polymarket-key.pem" ubuntu@<YOUR_IP>` |
+| See bot logs | `screen -r monitor` |
+| See dashboard logs | `screen -r dashboard` |
+| Leave a screen | `Ctrl+A`, then `D` |
+| Restart bot | `screen -r monitor` → `Ctrl+C` → run command → `Ctrl+A D` |
+| Full wipe | `rm -f trades.db* upcoming_markets.txt` then restart |
+| Disconnect SSH | Type `exit` |
+| Stop paying | Terminate instance in AWS Console |

@@ -1,0 +1,6 @@
+websocket-client
+requests
+streamlit
+pandas
+plotly
+streamlit-autorefresh

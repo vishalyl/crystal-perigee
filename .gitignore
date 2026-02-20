@@ -1,0 +1,19 @@
+# Database
+trades.db
+trades.db-wal
+trades.db-shm
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Market data (auto-generated)
+upcoming_markets.txt
+
+# Agent
+.agent/
+
+# OS
+Thumbs.db
+.DS_Store

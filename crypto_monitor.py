@@ -344,7 +344,8 @@ def on_error(ws, error):
 
 
 def on_close(ws, close_status_code, close_msg):
-    print(f"\n{YELLOW}[WS CLOSED]{RESET}")
+    print(f"\n{YELLOW}[WS CLOSED]{RESET} code={close_status_code} msg={close_msg}")
+    print(f"  {YELLOW}Will reconnect in 3 seconds...{RESET}")
 
 
 _bg_threads_started = False
@@ -352,7 +353,7 @@ _bg_threads_started = False
 def on_open(ws):
     global _bg_threads_started
     
-    # Subscribe to all active tokens
+    # Always re-subscribe all active tokens (handles initial + reconnect)
     token_ids = list(token_to_label.keys())
     if token_ids:
         payload = {
@@ -368,12 +369,14 @@ def on_open(ws):
     
     print_header()
     
-    # Start background threads only once
+    # Start background threads only once (they survive WS reconnects as daemon threads)
     if not _bg_threads_started:
         _bg_threads_started = True
         threading.Thread(target=slot_watcher_thread, daemon=True).start()
         fetcher.start_fetcher()
         print(f"  {GREEN}✓ Background threads started (slot watcher + fetcher){RESET}")
+    else:
+        print(f"  {GREEN}✓ WS reconnected — background threads still alive{RESET}")
     
     def ping_loop():
         while True:
@@ -508,26 +511,33 @@ def maintain_active_slots():
 
 
 def slot_watcher_thread():
-    """Check for expirations and refill slots every 5 seconds."""
+    """Check for expirations and refill slots every 5 seconds. Never dies."""
     while True:
-        time.sleep(5)
-        now = datetime.now(EST)
-        
-        expired_indices = []
-        for i, slot in enumerate(active_slots):
-            # Expire when current time >= slot end time (start + 1 hour)
-            if now >= slot["end_dt"]:
-                print(f"\n  {YELLOW}⏰ Slot expired: {slot['label']} (end_dt={slot['end_dt'].strftime('%I:%M %p')}){RESET}")
-                close_slot_trades(slot)
-                expired_indices.append(i)
-                
-        if expired_indices:
-            # Remove expired (reverse order)
-            for i in reversed(expired_indices):
-                del active_slots[i]
+        try:
+            time.sleep(5)
+            now = datetime.now(EST)
             
-            # Refill with next upcoming slot
-            maintain_active_slots()
+            expired_indices = []
+            for i, slot in enumerate(active_slots):
+                if now >= slot["end_dt"]:
+                    print(f"\n  {YELLOW}⏰ Slot expired: {slot['label']} (end_dt={slot['end_dt'].strftime('%I:%M %p')}){RESET}")
+                    try:
+                        close_slot_trades(slot)
+                    except Exception as e:
+                        print(f"  {RED}[CLOSE ERR] {e}{RESET}")
+                    expired_indices.append(i)
+                    
+            if expired_indices:
+                for i in reversed(expired_indices):
+                    del active_slots[i]
+                
+                try:
+                    maintain_active_slots()
+                except Exception as e:
+                    print(f"  {RED}[REFILL ERR] {e}{RESET}")
+        except Exception as e:
+            print(f"  {RED}[SLOT WATCHER ERR] {e}{RESET}")
+            time.sleep(5)  # Don't spin on repeated errors
 
 
 # ─── Main ───────────────────────────────────────────────────────────
@@ -573,6 +583,9 @@ def main():
                 on_close=on_close,
             )
             ws_app.run_forever()
+            # If run_forever returns, WS disconnected
+            print(f"\n  {YELLOW}[WS] run_forever() returned — reconnecting in 3s...{RESET}")
+            time.sleep(3)
         except KeyboardInterrupt:
             print(f"\n{YELLOW}Exiting...{RESET}")
             sys.exit(0)
